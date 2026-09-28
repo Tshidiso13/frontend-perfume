@@ -1,7 +1,8 @@
-const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:5000/api"
-).replace(/\/$/, "");
+const RAW_API_URL =
+  process.env.NEXT_PUBLIC_API_URL?.trim() ||
+  "http://localhost:5000/api";
+
+const API_URL = RAW_API_URL.replace(/\/+$/, "");
 
 type ApiOptions = RequestInit & {
   skipRefresh?: boolean;
@@ -21,6 +22,12 @@ const NO_REFRESH_ENDPOINTS = [
   "/auth/forgot-password",
   "/auth/reset-password",
 ];
+
+function normalizeEndpoint(endpoint: string) {
+  return endpoint.startsWith("/")
+    ? endpoint
+    : `/${endpoint}`;
+}
 
 function getErrorMessage(
   data: ApiErrorResponse | null,
@@ -82,6 +89,9 @@ export async function api<T>(
   endpoint: string,
   options: ApiOptions = {}
 ): Promise<T> {
+  const normalizedEndpoint =
+    normalizeEndpoint(endpoint);
+
   const {
     skipRefresh = false,
     headers,
@@ -91,7 +101,8 @@ export async function api<T>(
   const isFormData =
     requestOptions.body instanceof FormData;
 
-  const requestHeaders = new Headers(headers);
+  const requestHeaders =
+    new Headers(headers);
 
   requestHeaders.set(
     "Accept",
@@ -109,14 +120,14 @@ export async function api<T>(
     );
   }
 
+  const requestUrl =
+    `${API_URL}${normalizedEndpoint}`;
+
   let response = await fetch(
-    `${API_URL}${endpoint}`,
+    requestUrl,
     {
       ...requestOptions,
       headers: requestHeaders,
-
-      // Required because NestJS stores
-      // JWTs in HttpOnly cookies.
       credentials: "include",
     }
   );
@@ -125,7 +136,8 @@ export async function api<T>(
     response.status === 401 &&
     !skipRefresh &&
     !NO_REFRESH_ENDPOINTS.some(
-      (route) => endpoint.startsWith(route)
+      (route) =>
+        normalizedEndpoint.startsWith(route)
     );
 
   if (canRefresh) {
@@ -134,7 +146,7 @@ export async function api<T>(
 
     if (refreshed) {
       response = await fetch(
-        `${API_URL}${endpoint}`,
+        requestUrl,
         {
           ...requestOptions,
           headers: requestHeaders,
@@ -158,9 +170,10 @@ export async function api<T>(
     );
   }
 
-  const data = await parseResponse<T>(
-    response
-  );
+  const data =
+    await parseResponse<T>(
+      response
+    );
 
   return data as T;
 }
